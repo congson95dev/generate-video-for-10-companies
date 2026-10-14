@@ -1,0 +1,20 @@
+{
+  "openai_api_key": "sk-...",
+  "geminigen_api_key": "...",
+  "company_information": [
+    {
+      "row_number": 2,
+      "Company Name": "SlabX Kitchens & Countertops",
+      "Video and Image Style": "Premium, design-led, confident, experienced",
+      "Content Pillars": "Project showcase, material close-ups, referral program",
+      "Color": "#373737 #7FC143 #000000 #D8DDD7 #FFFFFF",
+      "Fonts": "Roboto, Literaturnaya",
+      "Short Company Description": "Countertop and custom cabinetry specialist.",
+      "Services List": "Quartz and porcelain countertops, kitchen cabinetry, renovations",
+      "CTA Video Link": "ignored"
+    }
+  ],
+  "before_images_path": [["/tmp/before-1.jpg"]],
+  "during_images_path": [["/tmp/during-1.jpg"]],
+  "after_images_path": [["/tmp/after-1.jpg"]]
+}
