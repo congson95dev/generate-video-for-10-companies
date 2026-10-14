@@ -18,21 +18,43 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-Cần cài `ffmpeg`. Có thể dùng Docker:
+## Gọi từ n8n
 
-```bash
-docker build -t veo-video-api .
-docker run --rm -p 8000:8000 -v "$(pwd)/generated-videos:/data/generated-videos" veo-video-api
+### Docker Compose dùng chung với n8n
+
+`docker-compose.yml` đã có service `video-generator` và đặt nó cùng network với n8n. Không cần publish port `8000` ra Internet; trong mọi node n8n (kể cả worker), gọi URL nội bộ:
+
+```text
+http://video-generator:8000/generate-video/
 ```
 
-## Gọi từ n8n
+Tất cả container n8n/worker và `video-generator` dùng chung host directory `${DEPLOY_FOLDER}/local_files`, với container path là `/files`.
+
+> Đường dẫn đưa vào `before_images_path`, `during_images_path`, `after_images_path` bắt buộc là `/files/...`, không dùng `/tmp/...`. `/tmp` của n8n và `/tmp` của Python là hai filesystem riêng. Video kết quả nằm ở `/files/generated-videos/<job-id>/video-24s.mp4`, nên n8n có thể đọc trực tiếp bằng node Read/Write Files from Disk.
+
+Trước khi redeploy, pin `N8N_IMAGE` trong `.env` thành tag n8n hiện chạy (đừng để `latest` tự đổi phiên bản). Sau đó chạy:
+
+```bash
+cd <thu-muc-deploy>
+docker compose up -d --build video-generator
+docker compose up -d
+```
+
+Kiểm tra service từ container n8n:
+
+```bash
+docker compose exec n8n wget -qO- http://video-generator:8000/health
+```
+
+### HTTP Request node
 
 Sử dụng node **HTTP Request**:
 
 - Method: `POST`
-- URL: `http://<host-api>:8000/generate-video/`
+- URL: `http://video-generator:8000/generate-video/`
 - Body Content Type: `JSON`
 - JSON Body: dữ liệu từ [sample-request.json](sample-request.json). Truyền key qua expression của n8n, không hard-code vào workflow.
+- Timeout: `900000` ms (15 phút), vì GeminiGen có thể poll tối đa 10 phút.
 
 Ví dụ response:
 
@@ -45,7 +67,7 @@ Ví dụ response:
 }
 ```
 
-`video_path` là đường dẫn của máy/chứa container đang chạy API. Nếu n8n ở máy khác, dùng `http://<host-api>:8000` + `video_url` để tải file. API chỉ nhận các đường dẫn ảnh có thật và dùng tối đa 5 ảnh cho mỗi nhóm.
+`video_path` là đường dẫn dùng chung giữa n8n và Python (`/files/generated-videos/...`). API chỉ nhận các đường dẫn ảnh có thật và dùng tối đa 5 ảnh cho mỗi nhóm.
 
 ## Tích hợp Veo đã phân tích
 

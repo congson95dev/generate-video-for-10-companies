@@ -23,9 +23,8 @@ x-n8n-common-env: &n8n-common-env
   OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS: "true"
 
 x-n8n-common: &n8n-common
-  build:
-    context: .
-    dockerfile: Dockerfile
+  # Đặt N8N_IMAGE thành đúng phiên bản n8n đang chạy trước khi redeploy.
+  image: ${N8N_IMAGE:-n8nio/n8n:1.123.11}
   restart: always
   pull_policy: if_not_present
   depends_on:
@@ -35,13 +34,35 @@ x-n8n-common: &n8n-common
   volumes:
     - n8n-data:/home/node/.n8n
     - ${DEPLOY_FOLDER}/local_files:/files
-    - ./binary_data:/files
   networks:
     - n8n_network
   environment:
     <<: *n8n-common-env
 
 services:
+  video-generator:
+    build:
+      context: .
+      dockerfile: Dockerfile.video-generator
+    restart: unless-stopped
+    environment:
+      OPENAI_PROMPT_MODEL: ${OPENAI_PROMPT_MODEL:-gpt-4.1-mini}
+      VIDEO_OUTPUT_DIR: /files/generated-videos
+      GEMINIGEN_POLL_SECONDS: ${GEMINIGEN_POLL_SECONDS:-30}
+      GEMINIGEN_MAX_POLLS: ${GEMINIGEN_MAX_POLLS:-20}
+    volumes:
+      # Cùng bind mount với n8n và toàn bộ workers. Ảnh input phải nằm dưới /files.
+      - ${DEPLOY_FOLDER}/local_files:/files
+    networks:
+      - n8n_network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging: *default-logging
+
   postgres:
     image: postgres:14-alpine
     restart: always
