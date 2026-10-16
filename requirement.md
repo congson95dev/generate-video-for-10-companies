@@ -10,7 +10,7 @@ Khách có 10 công ty:
 	Oneday roofing 
 	Panex showe glass
 
-Tôi cần tạo video 30s, tôi đã có sẵn CTA dài 6s. tôi cần tạo 3 video 24s bằng veo3 và ghép lại với nhau. tôi sẽ ghép CTA vô sau.
+Tôi cần tạo video 30s, tôi đã có sẵn CTA dài 6s. tôi cần tạo 3 video 24s bằng veo3 và ghép lại với nhau. sau đó ghép CTA video vô.
 Bố cục video sẽ bao gồm: Hook, content, CTA.
 Yêu cầu của khách:
 	Quality standards: Clean footage, readable text, no clutter
@@ -313,8 +313,9 @@ Hãy dùng API sau để check quá trình tạo video của geminigen (tôi pas
 tôi expect trong API /generate-video/, bạn có thể phân tích các dữ liệu trên để tạo ý tưởng, tạo prompt và tạo video sao cho hợp lý.
 hãy dùng openai để tạo prompt.
 về 3 images_path, bạn có thể không cần phân tích, hoặc nếu cần phân tích, hãy gọi api openai để phân tích.
+sau khi tạo video output, hãy ghép CTA video vào cuối video output đó.
 
-dưới đây là payload mẫu, hãy sử dụng nó để thiết kế API:
+dưới đây là payload mẫu, hãy sử dụng nó để thiết kế API /generate-video/:
 {
   "openai_api_key": "sk-",
   "geminigen_api_key": "geminiai-",
@@ -326,7 +327,8 @@ dưới đây là payload mẫu, hãy sử dụng nó để thiết kế API:
   "company_information": [{"json":{"row_number":2,"Company Name":"SlabX Kitchens & Countertops","Video and Image Style":"Premium, design-led, confident, experienced","Avoid":"Hard-sell language, discount shouting","Background Music":"https://drive.google.com/drive/folders/1ESvtj1Sws_N_dsjd_dY1JvTrIXFaylIy?usp=drive_link","Content Pillars":"Project showcase, material close-ups, referral program","Phone Number":9055053003,"Address":"222 Bond St W, Oshawa ON","Color":"#373737 #7FC143 #000000 #D8DDD7 #FFFFFF","Fonts":"Roboto, Literaturnaya","Website Content (service/product pages, About text, FAQs)":"Website Content\n\nAbout: slabX works with a hand-selected team of designers and master craftsmen so every phase, from the first quote to the final installation, reflects precision, care and dedication. The company aims to be great, not just good, and believes every detail matters.\n\nFine Cabinetry: Custom cabinetry for residential and commercial clients, including kitchen cabinets, vanities, closets, mudroom lockers and bookshelves, designed and built to fit your space and style.\n\nCustom Millwork: Specialized woodworking beyond typical trim carpentry, including wall paneling, fireplace mantels, floating shelves and decorative moldings.\n\nCabinet Door Profiles: A range of painted cabinet door profiles that can be painted in any colour to match your decor.\n\nSinks: A Bosco sink collection built for busy kitchens, filterable by series, mount style, material (including copper, stainless and granite) and number of basins.\n\nShowrooms: Oshawa (222 Bond St W, 905-505-3003) and Barrie (322 King St, Unit 8, 705-708-4000).\n\nShort Company Description\n\nslabX is a countertop and custom cabinetry specialist with showrooms in Oshawa and Barrie. A team of designers and master craftsmen handles every project from quote to installation.\n\nServices List\n\nCountertops, custom cabinets, bathroom vanities, full kitchen renovations, fine cabinetry (kitchens, vanities, closets, mudroom lockers, bookshelves), custom millwork (wall paneling, fireplace mantels, floating shelves, decorative moldings), painted cabinet doors, Bosco sinks","Short Company Description":"Durham Region's countertop specialists, with over a decade of experience and multiple showrooms. Quartz, porcelain and more, with expert help choosing your slab.","Services List":"Quartz and porcelain countertops, kitchen cabinetry, cabinet refacing, full kitchen renovations, sinks and backsplashes","Service Area (Durham Region and the GTA)":"Durham Region and the GTA","Logo File":"https://drive.google.com/file/d/1TpyySFI8pbXm7A2A5fJiG1v54LxoaMHS/view?usp=drive_link","Booking or quote links":"https://www.slabx.ca/oshawa","CTA Video Link":"https://drive.google.com/file/d/1bhpjgR7eQY0YxrGTGswOhOTHKqFm7CWk/view?usp=drivesdk"},"pairedItem":{"item":0}}],
   "before_images_path": "/tmp/1vJCbfUCgqiilPyJNq4Tp-cmCDf9Roh4U.jpg,/tmp/1dcXT0Bw1S8hxaghTjkRZNcp5eNixWI45.jpg,/tmp/10kEto1MRSLVL25inVT4Vhrled_i-fQP8.jpg,/tmp/1ST3yI4H898rp9VZfFo4gzBTAvvA4FYJn.jpg,/tmp/1I-BHyuLyTsapwBk7qy2ECLGJq_qO0U7Q.jpg",
   "during_images_path": "/tmp/1FKUCDl0C0XUjVnpN7B3AaQay2t7hx-bz.jpg,/tmp/15-IWYQC_uoy3W70PfgAzBrEHNffSZm9Z.jpg,/tmp/1rEAv6uQzjWx7IwCT6_m80PWQfvAektv4.jpg,/tmp/1s0vJ_BW3TgCPq__Md25RtZgx_7TRFS0z.jpg,/tmp/190V4iOstnkAagAtvm6BPUZuFghVDBEMz.jpg,/tmp/1VITIleTlxprsdOBXiFUS9x-YQdg8xsMq.jpg,/tmp/1xCx6TW9Oget_uU9VfDljMArCx5dTU_T8.jpg,/tmp/1SIsGozSIgd3jp2Lb58zjbxBu3HKw0UMX.jpg,/tmp/1wkFPiZWk6rBrOmLL8E4_vJEPNGgtJw9m.jpg",
-  "after_images_path": "/tmp/1FW6HJjcPdlAM1reRDu18UFloVtM0sggr.jpg,/tmp/19HXZx5DdppTqJ-Lhr-DUCpQwjhboF2LR.jpg,/tmp/1Y6HApQ939ULwcpxhjyVLz1AABHK3PXsD.jpg,/tmp/1gN6Fz5Sg00Nw23r9HjJYrz02q5ljR6gP.jpg,/tmp/1kHjOUpRZhQfFcseJ2GKsPyH_8Gz_lPpJ.jpg,/tmp/1iHm4IqmeTFzaV62uaY-WtvEtZSSXeuoW.jpg"
+  "after_images_path": "/tmp/1FW6HJjcPdlAM1reRDu18UFloVtM0sggr.jpg,/tmp/19HXZx5DdppTqJ-Lhr-DUCpQwjhboF2LR.jpg,/tmp/1Y6HApQ939ULwcpxhjyVLz1AABHK3PXsD.jpg,/tmp/1gN6Fz5Sg00Nw23r9HjJYrz02q5ljR6gP.jpg,/tmp/1kHjOUpRZhQfFcseJ2GKsPyH_8Gz_lPpJ.jpg,/tmp/1iHm4IqmeTFzaV62uaY-WtvEtZSSXeuoW.jpg",
+  "cta_video_path": "/files/cta.mp4"
 }
 
 Vì geminigen.ai chỉ chấp nhận link ảnh truyền vào khi ở imgbb link, nên khi bạn cần sử dụng ảnh để đẩy lên geminigen.ai API, bạn hãy upload ảnh từ local lên imgbb thông qua API của họ như sau:

@@ -1,12 +1,12 @@
 # Video generator cho 10 công ty
 
-FastAPI này tạo một video **24 giây** từ ba clip Veo 3.1 chạy song song:
+FastAPI này tạo một video hoàn chỉnh khoảng **30 giây**: ba clip Veo 3.1 (24 giây) chạy song song, sau đó ghép CTA có sẵn (thường 6 giây) ở cuối:
 
 1. Hook (ảnh `before`)
 2. Content / quy trình (ảnh `during`)
 3. Thành phẩm (ảnh `after`)
 
-CTA 6 giây có sẵn **không** được chèn vào API này. Hãy nối nó sau trong n8n để có video 30 giây. Prompt chủ động cấm chữ/logo/watermark sinh bởi AI; CTA và text có thể đọc được nên được overlay/ghép ở bước riêng.
+Truyền CTA qua `cta_video_path`. Service chuẩn hoá khung hình/codec, thêm silent audio nếu một đoạn không có audio, và giữ audio sẵn có của từng clip. Prompt chủ động cấm chữ/logo/watermark sinh bởi AI; CTA chứa text đọc được được giữ nguyên ở đoạn cuối. Prompt cũng ưu tiên cảnh không người; nếu buộc phải có thợ, chỉ cho phép một người ở góc rộng và cấm lỗi giải phẫu như dư tay/ngón hoặc biến dạng cơ thể.
 
 ## Chạy local
 
@@ -30,7 +30,7 @@ http://video-generator:8000/generate-video/
 
 Tất cả container n8n/worker và `video-generator` dùng chung host directory `${DEPLOY_FOLDER}/local_files`, với container path là `/files`. `/files` là thư mục workflow dùng để đọc/ghi ảnh và video; không dùng nó làm `N8N_BINARY_DATA_STORAGE_PATH`, vì n8n sẽ chặn node **Read/Write Files from Disk** ghi vào binary-data directory của chính n8n. Compose giới hạn file node ở `/files` qua `N8N_RESTRICT_FILE_ACCESS_TO`.
 
-> `before_images_path`, `during_images_path`, `after_images_path` đều không bắt buộc. Có thể bỏ hẳn field, gửi `[]`, hoặc `null`; service vẫn tạo clip bằng brief công ty. Khi có ảnh, đường dẫn phải là `/files/...`, không dùng `/tmp/...`. `/tmp` của n8n và `/tmp` của Python là hai filesystem riêng. Video kết quả nằm ở `/files/generated-videos/<job-id>/video-24s.mp4`, nên n8n có thể đọc trực tiếp bằng node Read/Write Files from Disk.
+> `before_images_path`, `during_images_path`, `after_images_path` đều không bắt buộc. Có thể bỏ hẳn field, gửi `[]`, hoặc `null`; service vẫn tạo clip bằng brief công ty. `cta_video_path` là bắt buộc và phải trỏ đến video CTA có thật trong `/files/...`. Không dùng `/tmp/...`: `/tmp` của n8n và Python là hai filesystem riêng. Video kết quả nằm ở `/files/generated-videos/<job-id>/video-30s.mp4`, nên n8n có thể đọc trực tiếp bằng node Read/Write Files from Disk.
 
 Trước khi redeploy, pin `N8N_IMAGE` trong `.env` thành tag n8n hiện chạy (đừng để `latest` tự đổi phiên bản). Sau đó chạy:
 
@@ -84,21 +84,22 @@ curl --max-time 900 \
     ],
     "before_images_path": "/files/slabx/before-1.jpg,/files/slabx/before-2.jpg",
     "during_images_path": "",
-    "after_images_path": null
+    "after_images_path": null,
+    "cta_video_path": "/files/cta.mp4"
   }'
 ```
 
 Sau khi import, thay các giá trị `"<..._API_KEY>"` bằng **Expression** lấy từ node Config/credential của bạn; không lưu API key thật trong node. Đặt **Options → Timeout** là `900000` ms nếu Import cURL chưa tự thiết lập timeout.
 
-Các field ảnh là optional. API hỗ trợ chuỗi đường dẫn phân cách bằng dấu phẩy (như payload từ n8n), mảng hoặc `null`. Nếu có ảnh local, `imgbb_api_key` là bắt buộc: service upload tối đa 5 ảnh mỗi nhóm lên ImgBB (expiration 60.000 giây), sau đó truyền direct URL từ ImgBB trong `ref_images` cho GeminiGen. Ảnh phải tồn tại trong `${DEPLOY_FOLDER}/local_files` trên VPS, tương ứng với `/files/...` trong container. Response chứa `video_path`, ví dụ `/files/generated-videos/<job-id>/video-24s.mp4`.
+Các field ảnh là optional. API hỗ trợ chuỗi đường dẫn phân cách bằng dấu phẩy (như payload từ n8n), mảng hoặc `null`. `cta_video_path` là bắt buộc. Nếu có ảnh local, `imgbb_api_key` là bắt buộc: service upload tối đa 5 ảnh mỗi nhóm lên ImgBB (expiration 60.000 giây), sau đó truyền direct URL từ ImgBB trong `ref_images` cho GeminiGen. Ảnh và CTA phải tồn tại trong `${DEPLOY_FOLDER}/local_files` trên VPS, tương ứng với `/files/...` trong container. Response chứa `video_path`, ví dụ `/files/generated-videos/<job-id>/video-30s.mp4`.
 
 Ví dụ response:
 
 ```json
 {
-  "video_path": "/files/generated-videos/<job-id>/video-24s.mp4",
-  "video_url": "/videos/<job-id>/video-24s.mp4",
-  "duration_seconds": 24,
+  "video_path": "/files/generated-videos/<job-id>/video-30s.mp4",
+  "video_url": "/videos/<job-id>/video-30s.mp4",
+  "duration_seconds": 30.0,
   "prompts": ["...", "...", "..."]
 }
 ```

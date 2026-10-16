@@ -20,5 +20,6 @@
   ],
   "before_images_path": "/files/slabx/before-1.jpg,/files/slabx/before-2.jpg",
   "during_images_path": "",
-  "after_images_path": null
+  "after_images_path": null,
+  "cta_video_path": "/files/cta.mp4"
 }

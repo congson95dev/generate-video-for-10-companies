@@ -1,4 +1,4 @@
-"""API tạo một video dọc 24 giây từ ba clip Veo 3.1."""
+"""API tạo video quảng cáo bằng ba clip Veo 3.1 và CTA có sẵn."""
 
 from __future__ import annotations
 
@@ -38,6 +38,13 @@ IGNORED_COMPANY_FIELDS = {
 }
 VIDEO_URL_KEYS = {"video_url", "videoUrl", "url", "download_url", "downloadUrl"}
 JOB_UUID_KEYS = {"uuid", "id", "task_uuid", "taskId"}
+ANATOMY_GUARDRAIL = (
+    "Anatomy constraint: prefer no people. If a worker is essential, show exactly one adult "
+    "from a wide rear or side angle, with hands out of frame or naturally visible. The worker "
+    "has exactly two arms and two hands with anatomically correct proportions; no extra, missing, "
+    "duplicated, fused, distorted, or deformed limbs, hands, fingers, faces, or reflections. "
+    "No hand close-ups, partial bodies, overlapping people, or complex manual actions."
+)
 
 
 class GenerateVideoRequest(BaseModel):
@@ -56,6 +63,8 @@ class GenerateVideoRequest(BaseModel):
     before_images_path: Any = Field(default=None)
     during_images_path: Any = Field(default=None)
     after_images_path: Any = Field(default=None)
+    # CTA có sẵn (thường 6 giây), ghép sau ba clip Veo.
+    cta_video_path: str = Field(min_length=1)
 
     @field_validator("company_information", mode="before")
     @classmethod
@@ -76,7 +85,7 @@ class GenerateVideoRequest(BaseModel):
 class GenerateVideoResponse(BaseModel):
     video_path: str
     video_url: str
-    duration_seconds: int
+    duration_seconds: float
     prompts: list[str]
 
 
@@ -110,6 +119,14 @@ def existing_image_paths(value: Any, label: str) -> list[Path]:
     return paths[:5]
 
 
+def existing_video_path(raw_path: str) -> Path:
+    """Validate CTA local path before invoking paid provider APIs."""
+    path = Path(raw_path.strip())
+    if not path.is_file():
+        raise HTTPException(422, f"Không tìm thấy CTA video: {raw_path}")
+    return path
+
+
 async def upload_image_to_imgbb(client: httpx.AsyncClient, api_key: str, image_path: Path) -> str:
     """Upload ảnh local và trả direct URL có thể dùng làm ref_images cho GeminiGen."""
     mime = "image/png" if image_path.suffix.lower() == ".png" else "image/jpeg"
@@ -137,7 +154,11 @@ async def upload_reference_images(client: httpx.AsyncClient, api_key: str, image
 async def create_prompts(request: GenerateVideoRequest, company: dict[str, Any]) -> list[str]:
     brief = json.dumps(clean_company(company), ensure_ascii=False, indent=2)
     instructions = """You write production-ready prompts for Veo 3.1. Return the structured output requested by the schema, with exactly three English prompt strings.
-The three 8-second vertical clips form one premium local-service ad: (1) hook using the BEFORE state, (2) craftsmanship/process using DURING state, (3) beautiful finished result using AFTER state. Preserve the company style, services and brand colors when supplied. Make each clip visually simple: one primary subject/action, clean composition, realistic materials, smooth camera motion, sharp well-lit footage, no clutter. Do not invent offers, prices, guarantees, addresses, phone numbers, logos, or facts absent from the brief. Do NOT ask the video model to render readable words, captions, logos, UI, watermarks, signage, or a CTA: text generation is unreliable and any CTA will be appended separately. The final shot must leave clean negative space for a later CTA overlay. Explicitly avoid garbled text and watermarks."""
+The three vertical clips form one premium local-service ad: (1) hook using the BEFORE state, (2) craftsmanship/process using DURING state, (3) beautiful finished result using AFTER state. Preserve the company style, services and brand colors when supplied. Make each clip visually simple: one primary subject/action, clean composition, realistic materials, smooth camera motion, sharp well-lit footage, no clutter.
+
+ANATOMY SAFETY IS A HARD REQUIREMENT. Prefer product, room, material, tool, and architectural-detail shots with no humans. If a person is essential to show workmanship, show exactly one adult worker from a wide rear or side angle, with both arms naturally visible or both hands fully outside the frame. Never use close-ups of hands, fingers, faces, or fast manual actions. Never show partial people, overlapping workers, reflections of people, or any person interacting with complex tools. The person must have exactly two arms and two hands, anatomically correct proportions, and no duplicate, extra, missing, fused, distorted, or deformed limbs, hands, fingers, or body parts. Keep that person stable and consistent for the entire shot.
+
+Do not invent offers, prices, guarantees, addresses, phone numbers, logos, or facts absent from the brief. Do NOT ask the video model to render readable words, captions, logos, UI, watermarks, signage, or a CTA: text generation is unreliable and the CTA video is appended separately. Explicitly avoid garbled text and watermarks."""
     user_input = f"""Company brief:
 {brief}
 
@@ -178,7 +199,8 @@ Create the three prompts. Each must state it is a {request.duration}-second {req
         raise HTTPException(502, "Không thể tạo prompt bằng OpenAI.") from exc
     if not isinstance(prompts, list) or len(prompts) != 3 or not all(isinstance(p, str) and p.strip() for p in prompts):
         raise HTTPException(502, "OpenAI không trả về đúng 3 prompt hợp lệ.")
-    return prompts
+    # Always send this constraint to Veo, even if the prompt-writing model omits it.
+    return [f"{prompt.strip()}\n\n{ANATOMY_GUARDRAIL}" for prompt in prompts]
 
 
 def find_video_url(payload: Any) -> str | None:
@@ -293,22 +315,61 @@ async def generate_veo_clip(
     return output_file
 
 
-def concatenate(clips: list[Path], output: Path, aspect_ratio: str) -> None:
-    """Chuẩn hoá rồi nối clip, tránh lỗi codec/timebase giữa ba video Veo."""
+def media_duration(media_file: Path) -> float:
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(media_file)],
+        capture_output=True, text=True, timeout=30,
+    )
+    try:
+        duration = float(result.stdout.strip())
+    except ValueError as exc:
+        raise HTTPException(422, f"Không đọc được thời lượng video: {media_file}") from exc
+    if result.returncode or duration <= 0:
+        raise HTTPException(422, f"CTA video không hợp lệ: {media_file}")
+    return duration
+
+
+def has_audio_stream(media_file: Path) -> bool:
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=index", "-of", "csv=p=0", str(media_file)],
+        capture_output=True, text=True, timeout=30,
+    )
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
+def concatenate(clips: list[Path], output: Path, aspect_ratio: str) -> float:
+    """Chuẩn hoá và nối ba Veo clip rồi CTA, kể cả clip không có audio."""
     scale = "1080:1920" if aspect_ratio == "9:16" else "1920:1080"
-    command = ["ffmpeg", "-y"]
-    for clip in clips:
-        command.extend(["-i", str(clip)])
-    filter_parts = [
-        f"[{index}:v]scale={scale}:force_original_aspect_ratio=decrease,pad={scale}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30[v{index}]"
-        for index in range(3)
-    ]
-    filter_parts.append("[v0][v1][v2]concat=n=3:v=1:a=0[outv]")
-    command.extend(["-filter_complex", ";".join(filter_parts), "-map", "[outv]", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(output)])
-    result = subprocess.run(command, capture_output=True, text=True, timeout=180)
+    normalized: list[Path] = []
+    for index, clip in enumerate(clips):
+        normalized_clip = output.parent / f"normalized-{index:02d}.mp4"
+        duration = media_duration(clip)
+        command = ["ffmpeg", "-y", "-i", str(clip)]
+        if has_audio_stream(clip):
+            command.extend(["-map", "0:v:0", "-map", "0:a:0", "-af", "aresample=async=1:first_pts=0,apad", "-c:a", "aac", "-b:a", "192k"])
+        else:
+            # concat demuxer needs matching audio streams in every segment.
+            command.extend(["-f", "lavfi", "-t", f"{duration:.3f}", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000", "-map", "0:v:0", "-map", "1:a:0", "-c:a", "aac", "-b:a", "192k"])
+        command.extend([
+            "-vf", f"scale={scale}:force_original_aspect_ratio=decrease,pad={scale}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-shortest", "-movflags", "+faststart", str(normalized_clip),
+        ])
+        result = subprocess.run(command, capture_output=True, text=True, timeout=180)
+        if result.returncode:
+            logger.error("ffmpeg normalization failed: %s", result.stderr[-2000:])
+            raise HTTPException(500, "Không thể chuẩn hoá video để ghép bằng ffmpeg.")
+        normalized.append(normalized_clip)
+
+    concat_file = output.parent / "concat.txt"
+    concat_file.write_text("".join(f"file '{clip.name}'\n" for clip in normalized), encoding="utf-8")
+    result = subprocess.run(
+        ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file), "-c", "copy", "-movflags", "+faststart", str(output)],
+        capture_output=True, text=True, timeout=180,
+    )
     if result.returncode:
-        logger.error("ffmpeg failed: %s", result.stderr[-2000:])
-        raise HTTPException(500, "Không thể nối ba clip bằng ffmpeg.")
+        logger.error("ffmpeg concat failed: %s", result.stderr[-2000:])
+        raise HTTPException(500, "Không thể ghép ba clip Veo và CTA bằng ffmpeg.")
+    return media_duration(output)
 
 
 @app.get("/health")
@@ -318,7 +379,7 @@ async def health() -> dict[str, str]:
 
 @app.post("/generate-video/", response_model=GenerateVideoResponse)
 async def generate_video(request: GenerateVideoRequest) -> GenerateVideoResponse:
-    """Tạo 3 clip Veo theo ảnh before/during/after và nối chúng thành một video."""
+    """Tạo 3 clip Veo theo ảnh before/during/after rồi ghép CTA ở cuối."""
     job_id = uuid.uuid4().hex
     job_dir = BASE_DIR / job_id
     job_dir.mkdir()
@@ -326,6 +387,7 @@ async def generate_video(request: GenerateVideoRequest) -> GenerateVideoResponse
     before = existing_image_paths(request.before_images_path, "before_images_path")
     during = existing_image_paths(request.during_images_path, "during_images_path")
     after = existing_image_paths(request.after_images_path, "after_images_path")
+    cta = existing_video_path(request.cta_video_path)
     if (before or during or after) and not request.imgbb_api_key.strip():
         shutil.rmtree(job_dir, ignore_errors=True)
         raise HTTPException(422, "imgbb_api_key là bắt buộc khi truyền ảnh local.")
@@ -337,8 +399,8 @@ async def generate_video(request: GenerateVideoRequest) -> GenerateVideoResponse
                 generate_veo_clip(client, request, prompts[1], during, job_dir / "02-process.mp4"),
                 generate_veo_clip(client, request, prompts[2], after, job_dir / "03-result.mp4"),
             )
-        output = job_dir / "video-24s.mp4"
-        await asyncio.to_thread(concatenate, clips, output, request.aspect_ratio)
+        output = job_dir / "video-30s.mp4"
+        final_duration = await asyncio.to_thread(concatenate, [*clips, cta], output, request.aspect_ratio)
     except HTTPException:
         shutil.rmtree(job_dir, ignore_errors=True)
         raise
@@ -349,14 +411,14 @@ async def generate_video(request: GenerateVideoRequest) -> GenerateVideoResponse
     return GenerateVideoResponse(
         video_path=str(output),
         video_url=f"/videos/{job_id}/{output.name}",
-        duration_seconds=request.duration * 3,
+        duration_seconds=round(final_duration, 3),
         prompts=prompts,
     )
 
 
 @app.get("/videos/{job_id}/{filename}")
 async def get_video(job_id: str, filename: str) -> FileResponse:
-    if not re.fullmatch(r"[a-f0-9]{32}", job_id) or filename != "video-24s.mp4":
+    if not re.fullmatch(r"[a-f0-9]{32}", job_id) or filename != "video-30s.mp4":
         raise HTTPException(404, "Không tìm thấy video.")
     file_path = BASE_DIR / job_id / filename
     if not file_path.is_file():
