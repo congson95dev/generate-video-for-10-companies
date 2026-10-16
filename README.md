@@ -32,12 +32,13 @@ Tất cả container n8n/worker và `video-generator` dùng chung host directory
 
 > `before_images_path`, `during_images_path`, `after_images_path` đều không bắt buộc. Có thể bỏ hẳn field, gửi `[]`, hoặc `null`; service vẫn tạo clip bằng brief công ty. `cta_video_path` là bắt buộc và phải trỏ đến video CTA có thật trong `/files/...`. Không dùng `/tmp/...`: `/tmp` của n8n và Python là hai filesystem riêng. Video kết quả nằm ở `/files/generated-videos/<job-id>/video-30s.mp4`, nên n8n có thể đọc trực tiếp bằng node Read/Write Files from Disk.
 
-Trước khi redeploy, pin `N8N_IMAGE` trong `.env` thành tag n8n hiện chạy (đừng để `latest` tự đổi phiên bản). Sau đó chạy:
+`n8n`, cùng tất cả worker, được build từ `Dockerfile`; image này cài `ffmpeg` (bao gồm `ffprobe`). Nếu cần, đặt tag local qua `N8N_LOCAL_IMAGE` trong `.env`. Phiên bản n8n gốc được pin trong dòng `FROM` của `Dockerfile`.
+
+Khi redeploy, build lại image n8n và service tạo video:
 
 ```bash
 cd <thu-muc-deploy>
-docker compose up -d --build video-generator
-docker compose up -d
+docker compose up -d --build
 ```
 
 Kiểm tra service từ container n8n:

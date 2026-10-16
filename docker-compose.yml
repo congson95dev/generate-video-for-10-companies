@@ -29,10 +29,12 @@ x-n8n-common-env: &n8n-common-env
   OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS: "true"
 
 x-n8n-common: &n8n-common
-  # Đặt N8N_IMAGE thành đúng phiên bản n8n đang chạy trước khi redeploy.
-  image: ${N8N_IMAGE:-n8nio/n8n:1.123.11}
+  # Build the custom n8n image so ffmpeg and ffprobe are available to n8n
+  # itself and every queue worker.
+  build:
+    context: .
+    dockerfile: Dockerfile
   restart: always
-  pull_policy: if_not_present
   depends_on:
     - postgres
     - redis
