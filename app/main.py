@@ -32,6 +32,7 @@ IMGBB_EXPIRATION_SECONDS = 60_000
 # Khớp với flow n8n được cung cấp: poll mỗi 30 giây; tối đa 20 lần = 10 phút.
 GEMINIGEN_POLL_SECONDS = float(os.getenv("GEMINIGEN_POLL_SECONDS", "30"))
 GEMINIGEN_MAX_POLLS = int(os.getenv("GEMINIGEN_MAX_POLLS", "20"))
+CTA_DURATION_SECONDS = 6.0
 IGNORED_COMPANY_FIELDS = {
     "CTA Video Link", "Logo File", "Booking or quote links", "Address",
     "Phone Number", "Background Music", "row_number",
@@ -337,22 +338,30 @@ def has_audio_stream(media_file: Path) -> bool:
     return result.returncode == 0 and bool(result.stdout.strip())
 
 
-def concatenate(clips: list[Path], output: Path, aspect_ratio: str) -> float:
-    """Chuẩn hoá và nối ba Veo clip rồi CTA, kể cả clip không có audio."""
+def concatenate(clips: list[Path], output: Path, aspect_ratio: str, veo_duration: int) -> float:
+    """Trim từng segment đúng thời lượng yêu cầu trước khi nối, loại bỏ Veo end-holds."""
+    if len(clips) != 4:
+        raise ValueError("Expected exactly three Veo clips and one CTA clip")
     scale = "1080:1920" if aspect_ratio == "9:16" else "1920:1080"
     normalized: list[Path] = []
     for index, clip in enumerate(clips):
         normalized_clip = output.parent / f"normalized-{index:02d}.mp4"
-        duration = media_duration(clip)
+        target_duration = float(veo_duration) if index < 3 else CTA_DURATION_SECONDS
+        source_duration = media_duration(clip)
+        # A shorter source cannot make a clean, non-frozen target segment. A longer
+        # response is normal with Veo and is explicitly cut to remove its end hold.
+        if source_duration < target_duration - 0.1:
+            kind = f"Veo clip {index + 1}" if index < 3 else "CTA video"
+            raise HTTPException(502, f"{kind} ngắn hơn {target_duration:g} giây nên không thể tạo video đúng thời lượng.")
         command = ["ffmpeg", "-y", "-i", str(clip)]
         if has_audio_stream(clip):
             command.extend(["-map", "0:v:0", "-map", "0:a:0", "-af", "aresample=async=1:first_pts=0,apad", "-c:a", "aac", "-b:a", "192k"])
         else:
             # concat demuxer needs matching audio streams in every segment.
-            command.extend(["-f", "lavfi", "-t", f"{duration:.3f}", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000", "-map", "0:v:0", "-map", "1:a:0", "-c:a", "aac", "-b:a", "192k"])
+            command.extend(["-f", "lavfi", "-t", f"{target_duration:.3f}", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000", "-map", "0:v:0", "-map", "1:a:0", "-c:a", "aac", "-b:a", "192k"])
         command.extend([
             "-vf", f"scale={scale}:force_original_aspect_ratio=decrease,pad={scale}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30",
-            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-shortest", "-movflags", "+faststart", str(normalized_clip),
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-t", f"{target_duration:.3f}", "-movflags", "+faststart", str(normalized_clip),
         ])
         result = subprocess.run(command, capture_output=True, text=True, timeout=180)
         if result.returncode:
@@ -400,7 +409,7 @@ async def generate_video(request: GenerateVideoRequest) -> GenerateVideoResponse
                 generate_veo_clip(client, request, prompts[2], after, job_dir / "03-result.mp4"),
             )
         output = job_dir / "video-30s.mp4"
-        final_duration = await asyncio.to_thread(concatenate, [*clips, cta], output, request.aspect_ratio)
+        final_duration = await asyncio.to_thread(concatenate, [*clips, cta], output, request.aspect_ratio, request.duration)
     except HTTPException:
         shutil.rmtree(job_dir, ignore_errors=True)
         raise

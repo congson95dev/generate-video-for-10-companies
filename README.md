@@ -6,7 +6,7 @@ FastAPI này tạo một video hoàn chỉnh khoảng **30 giây**: ba clip Veo 
 2. Content / quy trình (ảnh `during`)
 3. Thành phẩm (ảnh `after`)
 
-Truyền CTA qua `cta_video_path`. Service chuẩn hoá khung hình/codec, thêm silent audio nếu một đoạn không có audio, và giữ audio sẵn có của từng clip. Prompt chủ động cấm chữ/logo/watermark sinh bởi AI; CTA chứa text đọc được được giữ nguyên ở đoạn cuối. Prompt cũng ưu tiên cảnh không người; nếu buộc phải có thợ, chỉ cho phép một người ở góc rộng và cấm lỗi giải phẫu như dư tay/ngón hoặc biến dạng cơ thể.
+Truyền CTA qua `cta_video_path`. Service chuẩn hoá khung hình/codec, thêm silent audio nếu một đoạn không có audio, và giữ audio sẵn có của từng clip. Mỗi clip Veo được cắt chính xác theo `duration` (mặc định 8 giây) và CTA được cắt đúng 6 giây trước khi ghép, nên phần frame đứng cuối do nhà cung cấp trả dư không thể kéo dài video. Prompt chủ động cấm chữ/logo/watermark sinh bởi AI; CTA chứa text đọc được được giữ nguyên ở đoạn cuối. Prompt cũng ưu tiên cảnh không người; nếu buộc phải có thợ, chỉ cho phép một người ở góc rộng và cấm lỗi giải phẫu như dư tay/ngón hoặc biến dạng cơ thể.
 
 ## Chạy local
 
