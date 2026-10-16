@@ -28,7 +28,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 http://video-generator:8000/generate-video/
 ```
 
-Tất cả container n8n/worker và `video-generator` dùng chung host directory `${DEPLOY_FOLDER}/local_files`, với container path là `/files`.
+Tất cả container n8n/worker và `video-generator` dùng chung host directory `${DEPLOY_FOLDER}/local_files`, với container path là `/files`. `/files` là thư mục workflow dùng để đọc/ghi ảnh và video; không dùng nó làm `N8N_BINARY_DATA_STORAGE_PATH`, vì n8n sẽ chặn node **Read/Write Files from Disk** ghi vào binary-data directory của chính n8n. Compose giới hạn file node ở `/files` qua `N8N_RESTRICT_FILE_ACCESS_TO`.
 
 > `before_images_path`, `during_images_path`, `after_images_path` đều không bắt buộc. Có thể bỏ hẳn field, gửi `[]`, hoặc `null`; service vẫn tạo clip bằng brief công ty. Khi có ảnh, đường dẫn phải là `/files/...`, không dùng `/tmp/...`. `/tmp` của n8n và `/tmp` của Python là hai filesystem riêng. Video kết quả nằm ở `/files/generated-videos/<job-id>/video-24s.mp4`, nên n8n có thể đọc trực tiếp bằng node Read/Write Files from Disk.
 

@@ -15,7 +15,13 @@ x-n8n-common-env: &n8n-common-env
   DB_POSTGRESDB_USER: n8n
   DB_POSTGRESDB_PASSWORD: NJNf^DDeUa2jyt4
   N8N_DEFAULT_BINARY_DATA_MODE: filesystem
-  N8N_BINARY_DATA_STORAGE_PATH: /files
+  # Keep n8n's internal execution binary data separate from the workflow-shared
+  # directory. n8n blocks Read/Write Files nodes from accessing its configured
+  # binary-data directory, so using /files here prevents workflow nodes from
+  # saving images and videos to the shared bind mount.
+  N8N_BINARY_DATA_STORAGE_PATH: /home/node/.n8n/binary-data
+  # Permit workflow file nodes to use only the shared bind mount.
+  N8N_RESTRICT_FILE_ACCESS_TO: /files
   EXECUTIONS_MODE: queue
   QUEUE_BULL_REDIS_HOST: redis
   QUEUE_BULL_REDIS_PORT: 6379
