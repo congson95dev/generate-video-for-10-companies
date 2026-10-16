@@ -30,7 +30,7 @@ http://video-generator:8000/generate-video/
 
 Tất cả container n8n/worker và `video-generator` dùng chung host directory `${DEPLOY_FOLDER}/local_files`, với container path là `/files`.
 
-> Đường dẫn đưa vào `before_images_path`, `during_images_path`, `after_images_path` bắt buộc là `/files/...`, không dùng `/tmp/...`. `/tmp` của n8n và `/tmp` của Python là hai filesystem riêng. Video kết quả nằm ở `/files/generated-videos/<job-id>/video-24s.mp4`, nên n8n có thể đọc trực tiếp bằng node Read/Write Files from Disk.
+> `before_images_path`, `during_images_path`, `after_images_path` đều không bắt buộc. Có thể bỏ hẳn field, gửi `[]`, hoặc `null`; service vẫn tạo clip bằng brief công ty. Khi có ảnh, đường dẫn phải là `/files/...`, không dùng `/tmp/...`. `/tmp` của n8n và `/tmp` của Python là hai filesystem riêng. Video kết quả nằm ở `/files/generated-videos/<job-id>/video-24s.mp4`, nên n8n có thể đọc trực tiếp bằng node Read/Write Files from Disk.
 
 Trước khi redeploy, pin `N8N_IMAGE` trong `.env` thành tag n8n hiện chạy (đừng để `latest` tự đổi phiên bản). Sau đó chạy:
 
@@ -78,7 +78,7 @@ POST https://api.geminigen.ai/uapi/v1/video-gen/veo
 x-api-key: <geminigen_api_key>
 multipart/form-data:
   prompt, model=veo-3.1, resolution=1080p, aspect_ratio=9:16,
-  duration=8, ref_images=<một hoặc nhiều file ảnh>
+  duration=8, ref_images=<một hoặc nhiều file ảnh, optional>
 ```
 
 Sau đó API đọc `uuid` trong response và poll:

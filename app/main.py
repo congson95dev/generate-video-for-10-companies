@@ -48,9 +48,10 @@ class GenerateVideoRequest(BaseModel):
     aspect_ratio: Literal["9:16", "16:9"] = "9:16"
     duration: int = Field(default=8, ge=1, le=8)
     company_information: list[dict[str, Any]] = Field(min_length=1)
-    before_images_path: list[Any] = Field(default_factory=list)
-    during_images_path: list[Any] = Field(default_factory=list)
-    after_images_path: list[Any] = Field(default_factory=list)
+    # Các trường này optional: thiếu, [] hoặc null đều có nghĩa không có ảnh tham chiếu.
+    before_images_path: list[Any] | None = Field(default=None)
+    during_images_path: list[Any] | None = Field(default=None)
+    after_images_path: list[Any] | None = Field(default=None)
 
     @field_validator("company_information")
     @classmethod
@@ -86,7 +87,7 @@ def flatten_paths(value: Any) -> list[str]:
     return []
 
 
-def existing_image_paths(value: list[Any], label: str) -> list[Path]:
+def existing_image_paths(value: list[Any] | None, label: str) -> list[Path]:
     paths: list[Path] = []
     for raw_path in flatten_paths(value):
         path = Path(raw_path)
@@ -104,7 +105,9 @@ The three 8-second vertical clips form one premium local-service ad: (1) hook us
     user_input = f"""Company brief:
 {brief}
 
-Create the three prompts. Each must state it is a {request.duration}-second {request.aspect_ratio} video and name its visual role (HOOK, PROCESS, or RESULT)."""
+Reference-image availability: BEFORE={len(existing_image_paths(request.before_images_path, 'before_images_path'))}, DURING={len(existing_image_paths(request.during_images_path, 'during_images_path'))}, AFTER={len(existing_image_paths(request.after_images_path, 'after_images_path'))}.
+
+Create the three prompts. Each must state it is a {request.duration}-second {request.aspect_ratio} video and name its visual role (HOOK, PROCESS, or RESULT). If a scene has no reference images, make it a coherent original visual based only on the company brief; do not claim to match a reference image."""
     client = AsyncOpenAI(api_key=request.openai_api_key)
     try:
         response = await client.responses.create(

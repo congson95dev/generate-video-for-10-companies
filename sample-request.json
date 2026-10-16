@@ -14,7 +14,7 @@
       "CTA Video Link": "ignored"
     }
   ],
-  "before_images_path": [["/tmp/before-1.jpg"]],
-  "during_images_path": [["/tmp/during-1.jpg"]],
-  "after_images_path": [["/tmp/after-1.jpg"]]
+  "before_images_path": [["/files/before-1.jpg"]],
+  "during_images_path": [],
+  "after_images_path": null
 }

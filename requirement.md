@@ -67,6 +67,8 @@ VD về 3 images_path:
   }
 ]
 
+các images_path có thể rỗng hoặc không truyền vào.
+
 output tôi expect là output video path (24s)
 
 Hãy dùng api sau để tạo video qua veo3 (tôi paste vô node của n8n, bạn hãy phân tích để lấy ra đc api kèm header và payload nhé):
