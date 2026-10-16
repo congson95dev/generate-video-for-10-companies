@@ -27,6 +27,8 @@ BASE_DIR = Path(os.getenv("VIDEO_OUTPUT_DIR", "./generated-videos")).resolve()
 BASE_DIR.mkdir(parents=True, exist_ok=True)
 VEO_URL = "https://api.geminigen.ai/uapi/v1/video-gen/veo"
 GEMINIGEN_HISTORY_URL = "https://api.geminigen.ai/uapi/v1/history/{uuid}"
+IMGBB_UPLOAD_URL = "https://api.imgbb.com/1/upload"
+IMGBB_EXPIRATION_SECONDS = 60_000
 # Khớp với flow n8n được cung cấp: poll mỗi 30 giây; tối đa 20 lần = 10 phút.
 GEMINIGEN_POLL_SECONDS = float(os.getenv("GEMINIGEN_POLL_SECONDS", "30"))
 GEMINIGEN_MAX_POLLS = int(os.getenv("GEMINIGEN_MAX_POLLS", "20"))
@@ -43,15 +45,25 @@ class GenerateVideoRequest(BaseModel):
 
     openai_api_key: str = Field(min_length=1)
     geminigen_api_key: str = Field(min_length=1)
+    # Chỉ bắt buộc khi request thật sự có ảnh local để dùng làm ref_images.
+    imgbb_api_key: str = ""
     model: str = "veo-3.1"
     resolution: Literal["720p", "1080p"] = "1080p"
     aspect_ratio: Literal["9:16", "16:9"] = "9:16"
     duration: int = Field(default=8, ge=1, le=8)
     company_information: list[dict[str, Any]] = Field(min_length=1)
     # Các trường này optional: thiếu, [] hoặc null đều có nghĩa không có ảnh tham chiếu.
-    before_images_path: list[Any] | None = Field(default=None)
-    during_images_path: list[Any] | None = Field(default=None)
-    after_images_path: list[Any] | None = Field(default=None)
+    before_images_path: Any = Field(default=None)
+    during_images_path: Any = Field(default=None)
+    after_images_path: Any = Field(default=None)
+
+    @field_validator("company_information", mode="before")
+    @classmethod
+    def unwrap_n8n_company_items(cls, companies: Any) -> Any:
+        """n8n thường trả [{"json": {...}, "pairedItem": ...}]."""
+        if not isinstance(companies, list):
+            return companies
+        return [item["json"] if isinstance(item, dict) and isinstance(item.get("json"), dict) else item for item in companies]
 
     @field_validator("company_information")
     @classmethod
@@ -77,9 +89,9 @@ def clean_company(company: dict[str, Any]) -> dict[str, Any]:
 
 
 def flatten_paths(value: Any) -> list[str]:
-    """Chấp nhận cả ["/tmp/a.jpg"] lẫn [{"images": ["/tmp/a.jpg"]}]."""
+    """Chấp nhận mảng/dict n8n hoặc chuỗi CSV đường dẫn ảnh."""
     if isinstance(value, str):
-        return [value]
+        return [path.strip() for path in value.split(",") if path.strip()]
     if isinstance(value, list):
         return [item for child in value for item in flatten_paths(child)]
     if isinstance(value, dict):
@@ -87,7 +99,7 @@ def flatten_paths(value: Any) -> list[str]:
     return []
 
 
-def existing_image_paths(value: list[Any] | None, label: str) -> list[Path]:
+def existing_image_paths(value: Any, label: str) -> list[Path]:
     paths: list[Path] = []
     for raw_path in flatten_paths(value):
         path = Path(raw_path)
@@ -96,6 +108,30 @@ def existing_image_paths(value: list[Any] | None, label: str) -> list[Path]:
         paths.append(path)
     # Tránh request multipart cực lớn; Veo chỉ cần một số ảnh đại diện mỗi phân cảnh.
     return paths[:5]
+
+
+async def upload_image_to_imgbb(client: httpx.AsyncClient, api_key: str, image_path: Path) -> str:
+    """Upload ảnh local và trả direct URL có thể dùng làm ref_images cho GeminiGen."""
+    mime = "image/png" if image_path.suffix.lower() == ".png" else "image/jpeg"
+    response = await client.post(
+        IMGBB_UPLOAD_URL,
+        params={"expiration": IMGBB_EXPIRATION_SECONDS, "key": api_key},
+        files={"image": (image_path.name, image_path.read_bytes(), mime)},
+    )
+    response.raise_for_status()
+    payload = response.json()
+    image_url = payload.get("data", {}).get("url") if isinstance(payload, dict) else None
+    if not payload.get("success") or not isinstance(image_url, str) or urlparse(image_url).scheme != "https":
+        raise ValueError("ImgBB response does not contain a valid direct image URL")
+    return image_url
+
+
+async def upload_reference_images(client: httpx.AsyncClient, api_key: str, image_paths: list[Path]) -> list[str]:
+    if not image_paths:
+        return []
+    if not api_key.strip():
+        raise HTTPException(422, "imgbb_api_key là bắt buộc khi có before_images_path, during_images_path hoặc after_images_path.")
+    return list(await asyncio.gather(*(upload_image_to_imgbb(client, api_key, image) for image in image_paths)))
 
 
 async def create_prompts(request: GenerateVideoRequest, company: dict[str, Any]) -> list[str]:
@@ -226,10 +262,7 @@ async def wait_for_geminigen_video(
 async def generate_veo_clip(
     client: httpx.AsyncClient, request: GenerateVideoRequest, prompt: str, image_paths: list[Path], output_file: Path
 ) -> Path:
-    files: list[tuple[str, tuple[str, bytes, str]]] = []
-    for image in image_paths:
-        mime = "image/png" if image.suffix.lower() == ".png" else "image/jpeg"
-        files.append(("ref_images", (image.name, image.read_bytes(), mime)))
+    reference_urls = await upload_reference_images(client, request.imgbb_api_key, image_paths)
     data = {
         "prompt": prompt,
         "model": request.model,
@@ -237,6 +270,10 @@ async def generate_veo_clip(
         "aspect_ratio": request.aspect_ratio,
         "duration": str(request.duration),
     }
+    # GeminiGen nhận URL trực tiếp; giữ multipart/form-data như node n8n mẫu.
+    files: list[tuple[str, tuple[None, str]]] = []
+    if reference_urls:
+        files.append(("ref_images", (None, ",".join(reference_urls))))
     try:
         generation = await client.post(VEO_URL, headers={"x-api-key": request.geminigen_api_key}, data=data, files=files)
         generation.raise_for_status()
@@ -289,6 +326,9 @@ async def generate_video(request: GenerateVideoRequest) -> GenerateVideoResponse
     before = existing_image_paths(request.before_images_path, "before_images_path")
     during = existing_image_paths(request.during_images_path, "during_images_path")
     after = existing_image_paths(request.after_images_path, "after_images_path")
+    if (before or during or after) and not request.imgbb_api_key.strip():
+        shutil.rmtree(job_dir, ignore_errors=True)
+        raise HTTPException(422, "imgbb_api_key là bắt buộc khi truyền ảnh local.")
     try:
         prompts = await create_prompts(request, company)
         async with httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=30.0), follow_redirects=True) as client:

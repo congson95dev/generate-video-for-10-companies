@@ -56,11 +56,47 @@ Sử dụng node **HTTP Request**:
 - JSON Body: dữ liệu từ [sample-request.json](sample-request.json). Truyền key qua expression của n8n, không hard-code vào workflow.
 - Timeout: `900000` ms (15 phút), vì GeminiGen có thể poll tối đa 10 phút.
 
+### Import cURL vào HTTP Request node
+
+Trong n8n, thêm node **HTTP Request** → chọn menu ba chấm → **Import cURL** → dán nguyên khối lệnh dưới đây. n8n sẽ tự tạo method, URL, header và JSON body. Đây không phải lệnh để chạy trong terminal.
+
+```bash
+curl --max-time 900 \
+  -X POST 'http://video-generator:8000/generate-video/' \
+  -H 'Content-Type: application/json' \
+  --data-raw '{
+    "openai_api_key": "<OPENAI_API_KEY>",
+    "geminigen_api_key": "<GEMINIGEN_API_KEY>",
+    "imgbb_api_key": "<IMGBB_API_KEY>",
+    "model": "veo-3.1",
+    "resolution": "1080p",
+    "aspect_ratio": "9:16",
+    "duration": 8,
+    "company_information": [
+      {
+        "json": {
+          "Company Name": "SlabX Kitchens & Countertops",
+          "Video and Image Style": "Premium, design-led, confident",
+          "Services List": "Quartz countertops, custom cabinetry"
+        },
+        "pairedItem": {"item": 0}
+      }
+    ],
+    "before_images_path": "/files/slabx/before-1.jpg,/files/slabx/before-2.jpg",
+    "during_images_path": "",
+    "after_images_path": null
+  }'
+```
+
+Sau khi import, thay các giá trị `"<..._API_KEY>"` bằng **Expression** lấy từ node Config/credential của bạn; không lưu API key thật trong node. Đặt **Options → Timeout** là `900000` ms nếu Import cURL chưa tự thiết lập timeout.
+
+Các field ảnh là optional. API hỗ trợ chuỗi đường dẫn phân cách bằng dấu phẩy (như payload từ n8n), mảng hoặc `null`. Nếu có ảnh local, `imgbb_api_key` là bắt buộc: service upload tối đa 5 ảnh mỗi nhóm lên ImgBB (expiration 60.000 giây), sau đó truyền direct URL từ ImgBB trong `ref_images` cho GeminiGen. Ảnh phải tồn tại trong `${DEPLOY_FOLDER}/local_files` trên VPS, tương ứng với `/files/...` trong container. Response chứa `video_path`, ví dụ `/files/generated-videos/<job-id>/video-24s.mp4`.
+
 Ví dụ response:
 
 ```json
 {
-  "video_path": "/data/generated-videos/<job-id>/video-24s.mp4",
+  "video_path": "/files/generated-videos/<job-id>/video-24s.mp4",
   "video_url": "/videos/<job-id>/video-24s.mp4",
   "duration_seconds": 24,
   "prompts": ["...", "...", "..."]
@@ -78,7 +114,7 @@ POST https://api.geminigen.ai/uapi/v1/video-gen/veo
 x-api-key: <geminigen_api_key>
 multipart/form-data:
   prompt, model=veo-3.1, resolution=1080p, aspect_ratio=9:16,
-  duration=8, ref_images=<một hoặc nhiều file ảnh, optional>
+  duration=8, ref_images=<các direct URL ImgBB phân cách bằng dấu phẩy, optional>
 ```
 
 Sau đó API đọc `uuid` trong response và poll:

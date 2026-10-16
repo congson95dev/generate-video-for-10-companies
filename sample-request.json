@@ -1,20 +1,24 @@
 {
   "openai_api_key": "sk-...",
   "geminigen_api_key": "...",
+  "imgbb_api_key": "...",
   "company_information": [
     {
-      "row_number": 2,
-      "Company Name": "SlabX Kitchens & Countertops",
-      "Video and Image Style": "Premium, design-led, confident, experienced",
-      "Content Pillars": "Project showcase, material close-ups, referral program",
-      "Color": "#373737 #7FC143 #000000 #D8DDD7 #FFFFFF",
-      "Fonts": "Roboto, Literaturnaya",
-      "Short Company Description": "Countertop and custom cabinetry specialist.",
-      "Services List": "Quartz and porcelain countertops, kitchen cabinetry, renovations",
-      "CTA Video Link": "ignored"
+      "json": {
+        "row_number": 2,
+        "Company Name": "SlabX Kitchens & Countertops",
+        "Video and Image Style": "Premium, design-led, confident, experienced",
+        "Content Pillars": "Project showcase, material close-ups, referral program",
+        "Color": "#373737 #7FC143 #000000 #D8DDD7 #FFFFFF",
+        "Fonts": "Roboto, Literaturnaya",
+        "Short Company Description": "Countertop and custom cabinetry specialist.",
+        "Services List": "Quartz and porcelain countertops, kitchen cabinetry, renovations",
+        "CTA Video Link": "ignored"
+      },
+      "pairedItem": {"item": 0}
     }
   ],
-  "before_images_path": [["/files/before-1.jpg"]],
-  "during_images_path": [],
+  "before_images_path": "/files/slabx/before-1.jpg,/files/slabx/before-2.jpg",
+  "during_images_path": "",
   "after_images_path": null
 }
